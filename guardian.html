@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>홈클럽 보호자 동의</title>
+<style>
+  :root { --bg:#f2f2f2; --card:#fff; --text:#111; --sub:#555; --line:#e2e2e2; --btn:#111; --btnText:#fff; --ok:#1E7A4C; --err:#C0392B; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0e0e0e; --card:#1a1a1a; --text:#f2f2f2; --sub:#a8a8a8; --line:#2c2c2c; --btn:#f2f2f2; --btnText:#111; --ok:#4CC48A; --err:#F07A6B; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", Roboto, sans-serif;
+    line-height:1.7; word-break:keep-all; }
+  main { max-width:640px; margin:0 auto; padding:32px 16px 64px; }
+  .brand { font-size:13px; letter-spacing:2.5px; font-weight:700; margin:0; }
+  h1 { font-size:24px; margin:4px 0 16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; margin:0 0 16px; }
+  h2 { font-size:16px; margin:16px 0 4px; }
+  h2:first-child { margin-top:0; }
+  p, li { font-size:15px; margin:4px 0; }
+  ul { padding-left:20px; margin:4px 0; }
+  label { display:flex; gap:10px; align-items:flex-start; font-size:15px; margin:12px 0; cursor:pointer; }
+  input[type=checkbox] { width:20px; height:20px; margin-top:4px; flex:none; }
+  button { width:100%; padding:14px; font-size:16px; font-weight:700; border:0; border-radius:12px; background:var(--btn); color:var(--btnText); cursor:pointer; }
+  button:disabled { opacity:.35; cursor:default; }
+  .ok { color:var(--ok); font-weight:700; }
+  .err { color:var(--err); }
+  .sub { color:var(--sub); font-size:13px; }
+  a { color:inherit; }
+</style>
+</head>
+<body>
+<main>
+  <p class="brand">PIN HIGH</p>
+  <h1>홈클럽 보호자 동의</h1>
+  <div id="app"><section><p>불러오는 중…</p></section></div>
+  <p class="sub">문의: <a href="mailto:pinhigh.homeclub@gmail.com">pinhigh.homeclub@gmail.com</a> · <a href="./">개인정보 처리방침</a></p>
+</main>
+<script>
+  // 공개용 주소와 키 (앱에 들어 있는 것과 같은 공개 키 — 서버 권한 규칙으로 보호됨)
+  const SUPABASE_URL = 'https://eftiegbcbryeaehqhogd.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_Kjms3hh6JpE49EgE11nPwg_d1gFqt91';
+  const app = document.getElementById('app');
+  const token = location.hash.replace(/^#/, '').trim();
+
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  async function rpc(name, args) {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) throw new Error((body && body.message) || '문제가 생겼습니다. 잠시 후 다시 시도해 주세요.');
+    return body;
+  }
+
+  function show(html) { app.innerHTML = `<section>${html}</section>`; }
+
+  function done(child) {
+    show(`<p class="ok">동의가 완료되었습니다.</p>
+      <p>${esc(child)} 회원님이 이제 홈클럽 앱을 쓸 수 있습니다. 앱을 다시 열면 바로 시작됩니다.</p>
+      <p class="sub">동의를 철회하거나 아이의 정보 삭제를 원하시면 위 문의 메일로 알려 주세요.</p>`);
+  }
+
+  async function start() {
+    if (!/^[0-9a-f-]{36}$/i.test(token)) {
+      show('<p class="err">링크가 올바르지 않습니다. 메일에 있는 버튼을 다시 눌러 주세요.</p>');
+      return;
+    }
+    let info;
+    try {
+      info = (await rpc('guardian_consent_info', { p_token: token }))[0];
+    } catch (e) {
+      show(`<p class="err">${esc(e.message)}</p>`);
+      return;
+    }
+    if (!info) {
+      show('<p class="err">링크가 올바르지 않거나 이미 새 링크로 바뀌었습니다. 가장 최근에 받은 메일의 버튼을 눌러 주세요.</p>');
+      return;
+    }
+    if (info.status === 'approved') { done(info.child_name); return; }
+    if (info.status === 'expired') {
+      show('<p class="err">링크 유효 기간(7일)이 지났습니다.</p><p>아이의 앱에서 "동의 메일 다시 보내기"를 누르면 새 메일이 갑니다.</p>');
+      return;
+    }
+
+    show(`
+      <p><strong>${esc(info.guardian_name)}</strong> 보호자님, <strong>${esc(info.child_name)}</strong> 회원님이
+      ${esc(info.club_name)} 홈클럽 앱에 가입하려고 합니다. 만 14세 미만 회원은 「개인정보 보호법」 제22조의2에 따라 보호자의 동의가 필요합니다.</p>
+
+      <h2>1. 수집·이용 목적</h2>
+      <p>홈클럽 앱 회원 관리, 골프 라운드 기록·앱 핸디캡 계산·기록 분석, 담당 프로 레슨 참고(회원이 공유를 켠 경우), 클럽 내 순위</p>
+      <h2>2. 수집 항목</h2>
+      <ul>
+        <li>회원: 이메일 주소, 이름, 성별, 담당 프로, 라운드 기록(골프장, 홀별 타수·퍼트 등, 메모)</li>
+        <li>보호자: 이름, 이메일 주소, 동의 일시</li>
+      </ul>
+      <h2>3. 보유·이용 기간</h2>
+      <p>회원 탈퇴 시까지. 탈퇴하면 회원과 보호자 정보가 즉시 삭제됩니다.</p>
+      <h2>4. 동의를 거부할 권리</h2>
+      <p>동의를 거부할 수 있으며, 거부하면 홈클럽 앱을 쓸 수 없습니다(핀하이 레슨 등 다른 서비스에는 영향이 없습니다). 동의 후에도 언제든지 아이의 정보 확인·수정·삭제·처리 정지를 요청할 수 있습니다.</p>
+      <p class="sub">자세한 내용은 <a href="./">개인정보 처리방침</a>을 확인해 주세요.</p>
+
+      <label><input type="checkbox" id="agree"> 위 내용을 확인했으며, 저는 ${esc(info.child_name)} 회원의 법정대리인으로서 개인정보 수집·이용에 동의합니다.</label>
+      <p id="msg" class="err"></p>
+      <button id="go" disabled>동의합니다</button>
+    `);
+
+    const agree = document.getElementById('agree');
+    const go = document.getElementById('go');
+    const msg = document.getElementById('msg');
+    agree.addEventListener('change', () => { go.disabled = !agree.checked; });
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      msg.textContent = '';
+      try {
+        await rpc('guardian_give_consent', { p_token: token });
+        done(info.child_name);
+      } catch (e) {
+        msg.textContent = e.message;
+        go.disabled = !agree.checked;
+      }
+    });
+  }
+
+  start();
+</script>
+</body>
+</html>
